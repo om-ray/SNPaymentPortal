@@ -71,13 +71,14 @@ export async function POST(request: NextRequest) {
             const subscription = await stripe.subscriptions.retrieve(
               session.subscription as string,
             );
-            const priceId = subscription.items.data[0]?.price?.id;
+            const price = subscription.items.data[0]?.price;
+            const priceId = price?.id;
 
-            // Fetch plan data from Stripe
+            // Fetch plan data from Stripe with fallback to subscription interval
             let totalAccessMonths = 6; // default
             if (priceId) {
               const plan = await getPlanByPriceIdAsync(priceId);
-              if (plan) {
+              if (plan && plan.totalAccessMonths > 0) {
                 totalAccessMonths = plan.totalAccessMonths;
 
                 // Update customer metadata with plan info from Stripe
@@ -93,6 +94,23 @@ export async function POST(request: NextRequest) {
                 });
                 console.log(
                   `Updated customer metadata with plan: ${plan.planType}`,
+                );
+              } else {
+                // Fallback: determine from subscription interval
+                const interval = price?.recurring?.interval;
+                const intervalCount = price?.recurring?.interval_count || 1;
+
+                if (interval === "year") {
+                  totalAccessMonths = 12 * intervalCount;
+                } else if (interval === "month") {
+                  totalAccessMonths = intervalCount;
+                }
+
+                // Ensure minimum
+                if (totalAccessMonths < 1) totalAccessMonths = 6;
+
+                console.log(
+                  `Using fallback duration: ${totalAccessMonths} months`,
                 );
               }
             }
@@ -162,14 +180,27 @@ export async function POST(request: NextRequest) {
             const subscription = await stripe.subscriptions.retrieve(
               invoice.subscription as string,
             );
-            const priceId = subscription.items.data[0]?.price?.id;
+            const price = subscription.items.data[0]?.price;
+            const priceId = price?.id;
 
-            // Fetch plan data from Stripe
+            // Fetch plan data from Stripe with fallback
             let totalAccessMonths = 6; // default
             if (priceId) {
               const plan = await getPlanByPriceIdAsync(priceId);
-              if (plan) {
+              if (plan && plan.totalAccessMonths > 0) {
                 totalAccessMonths = plan.totalAccessMonths;
+              } else {
+                // Fallback: determine from subscription interval
+                const interval = price?.recurring?.interval;
+                const intervalCount = price?.recurring?.interval_count || 1;
+
+                if (interval === "year") {
+                  totalAccessMonths = 12 * intervalCount;
+                } else if (interval === "month") {
+                  totalAccessMonths = intervalCount;
+                }
+
+                if (totalAccessMonths < 1) totalAccessMonths = 6;
               }
             }
 

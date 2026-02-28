@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     if (customers.data.length === 0) {
       return NextResponse.json(
         { error: "Customer not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (!tradingViewUsername) {
       return NextResponse.json(
         { error: "No TradingView username found", needsOnboarding: true },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -47,25 +47,42 @@ export async function POST(request: NextRequest) {
 
     if (subscriptions.data.length === 0) {
       return NextResponse.json(
-        { 
+        {
           error: "No active subscription found",
           shouldHaveAccess: false,
-          provisioningStatus: customer.metadata?.provisioning_status || "none"
+          provisioningStatus: customer.metadata?.provisioning_status || "none",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const subscription = subscriptions.data[0];
-    const priceId = subscription.items.data[0]?.price?.id;
+    const price = subscription.items.data[0]?.price;
+    const priceId = price?.id;
 
-    // Get plan details
-    let totalAccessMonths = 6; // default
+    // Determine access duration based on plan or subscription interval
+    let totalAccessMonths = 6; // default fallback
+
     if (priceId) {
       const plan = await getPlanByPriceIdAsync(priceId);
-      if (plan) {
+      if (plan && plan.totalAccessMonths > 0) {
         totalAccessMonths = plan.totalAccessMonths;
+      } else {
+        // Fallback: determine from subscription interval
+        const interval = price?.recurring?.interval;
+        const intervalCount = price?.recurring?.interval_count || 1;
+
+        if (interval === "year") {
+          totalAccessMonths = 12 * intervalCount;
+        } else if (interval === "month") {
+          totalAccessMonths = intervalCount;
+        }
       }
+    }
+
+    // Ensure minimum of 1 month
+    if (totalAccessMonths < 1) {
+      totalAccessMonths = 6;
     }
 
     // Check current provisioning status
@@ -118,14 +135,14 @@ export async function POST(request: NextRequest) {
           provisioningStatus: "failed",
           details: accessError?.message,
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
   } catch (error) {
     console.error("Refresh access error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
