@@ -85,20 +85,8 @@ export async function POST(request: NextRequest) {
       totalAccessMonths = 6;
     }
 
-    // Check current provisioning status
-    const currentStatus = customer.metadata?.provisioning_status;
-
-    // If already complete, just return success
-    if (currentStatus === "complete") {
-      return NextResponse.json({
-        success: true,
-        message: "Access already granted",
-        alreadyProvisioned: true,
-        provisioningStatus: "complete",
-      });
-    }
-
-    // Try to grant access
+    // Always try to grant/update access - don't skip based on provisioning status
+    // This ensures we fix any access issues regardless of what metadata says
     try {
       // Update status to pending
       await stripe.customers.update(customer.id, {

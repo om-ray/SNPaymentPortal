@@ -180,12 +180,15 @@ export async function grantAccess(
       continue;
     }
 
+    // Always calculate expiration from TODAY, not from current expiration
+    // This ensures access is set to X months from now
     const newExpiration = calculateExpiration(
-      accessDetails.currentExpiration || new Date().toISOString(),
+      new Date().toISOString(),
       extensionType,
       extensionLength,
     );
 
+    // Use modify_access if user has access, add_access if they don't
     const endpoint = accessDetails.hasAccess
       ? TV_URLS.modify_access
       : TV_URLS.add_access;
