@@ -2,7 +2,6 @@ name: Refresh TradingView Session
 
 on:
   schedule:
-    # Run daily at 6 AM UTC
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
@@ -44,77 +43,62 @@ jobs:
           (async () => {
             console.log('Starting TradingView session refresh with Playwright...');
             
-            const browser = await chromium.launch({
-              headless: true,
-            });
-
+            const browser = await chromium.launch({ headless: true });
             const context = await browser.newContext({
+              viewport: { width: 1920, height: 1080 },
               userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
             });
-
             const page = await context.newPage();
 
             try {
-              console.log('Navigating to TradingView sign-in page...');
-              await page.goto('https://www.tradingview.com/accounts/signin/', {
+              console.log('Navigating to TradingView...');
+              await page.goto('https://www.tradingview.com/#signin', { 
                 waitUntil: 'networkidle',
-                timeout: 60000
+                timeout: 60000 
               });
               
+              await page.waitForTimeout(3000);
+              await page.screenshot({ path: 'debug1.png' });
+              
+              // Click the Email button first
+              console.log('Clicking Email button...');
+              await page.click('button[name="Email"]');
               await page.waitForTimeout(2000);
-              
-              // Look for and click email sign-in button
-              console.log('Looking for email sign-in option...');
-              const emailButton = await page.$('[data-name="email"]');
-              if (emailButton) {
-                console.log('Found email button, clicking...');
-                await emailButton.click();
-                await page.waitForTimeout(1000);
-              }
-              
-              // Wait for username input
-              console.log('Waiting for username input...');
-              await page.waitForSelector('input[name="id_username"], input[name="username"]', { timeout: 15000 });
+              await page.screenshot({ path: 'debug2.png' });
               
               // Fill in credentials
               console.log('Entering credentials...');
-              const usernameInput = await page.$('input[name="id_username"]') || await page.$('input[name="username"]');
-              if (usernameInput) {
-                await usernameInput.fill(process.env.TV_USERNAME);
-              }
+              await page.fill('input[name="id_username"]', process.env.TV_USERNAME);
+              await page.fill('input[name="id_password"]', process.env.TV_PASSWORD);
               
-              const passwordInput = await page.$('input[type="password"]');
-              if (passwordInput) {
-                await passwordInput.fill(process.env.TV_PASSWORD);
-              }
-              
-              // Check remember me
+              // Check remember me if available
               const rememberCheckbox = await page.$('input[name="remember"]');
               if (rememberCheckbox) {
-                await rememberCheckbox.check().catch(() => {});
+                await rememberCheckbox.check();
               }
               
-              // Click submit
-              console.log('Submitting login form...');
-              const submitButton = await page.$('button[type="submit"]');
-              if (submitButton) {
-                await submitButton.click();
-              } else {
-                await page.keyboard.press('Enter');
-              }
+              await page.screenshot({ path: 'debug3.png' });
               
-              // Wait for navigation
+              // Click sign in button
+              console.log('Clicking Sign in...');
+              await page.click('button[type="submit"]');
+              
+              // Wait for login to complete
               console.log('Waiting for login to complete...');
-              await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+              await page.waitForTimeout(5000);
+              await page.waitForLoadState('networkidle').catch(() => {});
               await page.waitForTimeout(3000);
               
-              // Get cookies
-              console.log('Extracting session cookie...');
+              await page.screenshot({ path: 'debug4.png' });
+              
+              // Get session cookie
+              console.log('Getting session cookie...');
               const cookies = await context.cookies('https://www.tradingview.com');
               const sessionCookie = cookies.find(c => c.name === 'sessionid');
               
               if (!sessionCookie) {
-                console.error('Session cookie not found. Login may have failed.');
+                console.error('Session cookie not found!');
+                console.log('Available cookies:', cookies.map(c => c.name).join(', '));
                 process.exit(1);
               }
               
@@ -125,12 +109,21 @@ jobs:
               
             } catch (error) {
               console.error('Error:', error.message);
+              await page.screenshot({ path: 'error.png' });
               process.exit(1);
             } finally {
               await browser.close();
             }
           })();
           SCRIPT
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: "*.png"
+          retention-days: 3
 
       - name: Update Vercel Environment Variable
         env:
@@ -147,14 +140,12 @@ jobs:
             | jq -r '.envs[] | select(.key == "TV_SESSION_ID") | .id')
 
           if [ -n "$ENV_VAR_ID" ] && [ "$ENV_VAR_ID" != "null" ]; then
-            # Update existing env var
             curl -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env/${ENV_VAR_ID}?teamId=${VERCEL_TEAM_ID}" \
               -H "Authorization: Bearer ${VERCEL_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "{\"value\": \"${NEW_SESSION_ID}\"}"
             echo "Updated existing TV_SESSION_ID"
           else
-            # Create new env var
             curl -X POST "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/env?teamId=${VERCEL_TEAM_ID}" \
               -H "Authorization: Bearer ${VERCEL_TOKEN}" \
               -H "Content-Type: application/json" \
@@ -169,18 +160,10 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
         run: |
           echo "Triggering Vercel redeploy..."
-
-          # Get the latest deployment
-          DEPLOYMENT_URL=$(curl -s -X GET "https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&teamId=${VERCEL_TEAM_ID}&limit=1&target=production" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            | jq -r '.deployments[0].url')
-
-          # Trigger redeploy
           curl -X POST "https://api.vercel.com/v13/deployments?teamId=${VERCEL_TEAM_ID}" \
             -H "Authorization: Bearer ${VERCEL_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"name\": \"sn-payment-portal\", \"project\": \"${VERCEL_PROJECT_ID}\", \"target\": \"production\", \"gitSource\": {\"type\": \"github\", \"repoId\": \"${{ github.repository_id }}\", \"ref\": \"main\"}}"
-
           echo "Redeploy triggered!"
 
       - name: Wait for deployment
@@ -193,22 +176,10 @@ jobs:
           RETRY_SECRET: ${{ secrets.RETRY_SECRET }}
         run: |
           CUSTOMER_ID="${{ github.event.inputs.retry_customer_id || github.event.client_payload.customer_id }}"
-
           if [ -n "$CUSTOMER_ID" ]; then
             echo "Retrying access grant for customer: $CUSTOMER_ID"
             curl -X POST "${APP_URL}/api/admin/retry-access" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ${RETRY_SECRET}" \
               -d "{\"customerId\": \"${CUSTOMER_ID}\"}"
-          fi
-
-      - name: Send notification on failure
-        if: failure()
-        env:
-          NOTIFICATION_WEBHOOK_URL: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
-        run: |
-          if [ -n "$NOTIFICATION_WEBHOOK_URL" ]; then
-            curl -X POST "$NOTIFICATION_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d '{"text": "⚠️ TradingView session refresh failed! Manual intervention may be required."}'
           fi
