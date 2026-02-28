@@ -56,12 +56,21 @@ export async function fetchPlansFromStripe(): Promise<Plan[]> {
         interval = "year";
       }
 
-      // Get values from Stripe product metadata
-      const accessDurationMonths = parseInt(
+      // Get values from Stripe product metadata with fallback to interval
+      let accessDurationMonths = parseInt(
         metadata.access_duration_months || "0",
       );
       const bonusMonths = parseInt(metadata.bonus_months || "0");
       const features = metadata.features ? JSON.parse(metadata.features) : [];
+
+      // Fallback: if no metadata, derive from subscription interval
+      if (accessDurationMonths === 0) {
+        if (price.recurring?.interval === "year") {
+          accessDurationMonths = 12 * (price.recurring?.interval_count || 1);
+        } else if (price.recurring?.interval === "month") {
+          accessDurationMonths = price.recurring?.interval_count || 1;
+        }
+      }
 
       plans.push({
         id: metadata.plan_id || priceId,
