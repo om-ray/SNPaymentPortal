@@ -54,6 +54,7 @@ interface SubscriptionData {
   } | null;
   availablePlans: {
     id: string;
+    priceId: string;
     name: string;
     planType: string;
     price: number;
@@ -74,6 +75,8 @@ export default function DashboardPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isRefreshingAccess, setIsRefreshingAccess] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [showChangePlan, setShowChangePlan] = useState(false);
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -136,6 +139,33 @@ export default function DashboardPage() {
       setError("Failed to cancel subscription");
     } finally {
       setIsCanceling(false);
+    }
+  };
+
+  const handleChangePlan = async (newPriceId: string) => {
+    setIsChangingPlan(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/subscription/change-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPriceId }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error || "Failed to change plan");
+        return;
+      }
+
+      setShowChangePlan(false);
+      await fetchSubscriptionData();
+    } catch (err) {
+      setError("Failed to change plan");
+    } finally {
+      setIsChangingPlan(false);
     }
   };
 
@@ -411,6 +441,17 @@ export default function DashboardPage() {
                     Manage Billing
                   </Button>
 
+                  {!data.subscription.cancelAtPeriodEnd &&
+                    data.availablePlans.length > 1 && (
+                      <Button
+                        onClick={() => setShowChangePlan(true)}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        Change Plan
+                      </Button>
+                    )}
+
                   {!data.subscription.cancelAtPeriodEnd && (
                     <Button
                       onClick={() => setShowCancelConfirm(true)}
@@ -465,6 +506,56 @@ export default function DashboardPage() {
                       )}
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {showChangePlan && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Plan</CardTitle>
+                  <CardDescription>
+                    Select a new plan. Your billing will be prorated.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3">
+                    {data.availablePlans
+                      .filter((plan) => plan.id !== data.currentPlan?.id)
+                      .map((plan) => (
+                        <div
+                          key={plan.id}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                        >
+                          <div>
+                            <p className="font-medium">{plan.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(plan.price, plan.currency)}/
+                              {plan.interval}
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => handleChangePlan(plan.priceId)}
+                            disabled={isChangingPlan}
+                            size="sm"
+                          >
+                            {isChangingPlan ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              "Switch"
+                            )}
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                  <Button
+                    onClick={() => setShowChangePlan(false)}
+                    variant="outline"
+                    className="w-full"
+                    disabled={isChangingPlan}
+                  >
+                    Cancel
+                  </Button>
                 </CardContent>
               </Card>
             )}

@@ -103,6 +103,7 @@ export async function GET() {
         : null,
       availablePlans: plans.map((p) => ({
         id: p.id,
+        priceId: p.priceId,
         name: p.name,
         planType: p.planType,
         price: p.price,
