@@ -81,7 +81,15 @@ jobs:
               
               // Click sign in button
               console.log('Clicking Sign in...');
-              await page.click('button[type="submit"]');
+              // Try multiple selectors for the sign in button
+              const signInClicked = await page.locator('button:has-text("Sign in")').first().click({ timeout: 5000 }).then(() => true).catch(() => false);
+              if (!signInClicked) {
+                await page.locator('button[type="submit"]').click({ timeout: 5000 }).catch(() => {});
+              }
+              if (!signInClicked) {
+                // Try pressing Enter as fallback
+                await page.keyboard.press('Enter');
+              }
               
               // Wait for login to complete
               console.log('Waiting for login to complete...');
