@@ -21,6 +21,7 @@ import {
   XCircle,
   LogOut,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 
 interface SubscriptionData {
@@ -71,6 +72,8 @@ export default function DashboardPage() {
   const [isCanceling, setIsCanceling] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isRefreshingAccess, setIsRefreshingAccess] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -133,6 +136,37 @@ export default function DashboardPage() {
       setError("Failed to cancel subscription");
     } finally {
       setIsCanceling(false);
+    }
+  };
+
+  const handleRefreshAccess = async () => {
+    setIsRefreshingAccess(true);
+    setRefreshMessage(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/subscription/refresh-access", {
+        method: "POST",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error || "Failed to refresh access");
+        return;
+      }
+
+      if (json.alreadyProvisioned) {
+        setRefreshMessage("Access is already active!");
+      } else {
+        setRefreshMessage("Access granted successfully!");
+      }
+
+      await fetchSubscriptionData();
+    } catch (err) {
+      setError("Failed to refresh access");
+    } finally {
+      setIsRefreshingAccess(false);
     }
   };
 
@@ -310,6 +344,45 @@ export default function DashboardPage() {
                       )}
                     </p>
                   </div>
+                </div>
+
+                <div className="p-3 bg-muted rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Access Status
+                      </p>
+                      <p className="font-medium">
+                        {data.provisioningStatus === "complete" ? (
+                          <span className="text-green-600">Active</span>
+                        ) : data.provisioningStatus === "pending" ? (
+                          <span className="text-yellow-600">Pending</span>
+                        ) : data.provisioningStatus === "failed" ? (
+                          <span className="text-red-600">Failed</span>
+                        ) : (
+                          <span className="text-muted-foreground">Unknown</span>
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleRefreshAccess}
+                      disabled={isRefreshingAccess}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {isRefreshingAccess ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                      )}
+                      {isRefreshingAccess ? "Checking..." : "Refresh Access"}
+                    </Button>
+                  </div>
+                  {refreshMessage && (
+                    <p className="mt-2 text-sm text-green-600">
+                      {refreshMessage}
+                    </p>
+                  )}
                 </div>
 
                 {data.subscription.cancelAtPeriodEnd && (
