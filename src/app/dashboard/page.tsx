@@ -1,165 +1,188 @@
-'use client'
+"use client";
 
-import { useSession, signOut } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { 
-  Loader2, 
-  AlertCircle, 
-  CreditCard, 
-  Calendar, 
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Loader2,
+  AlertCircle,
+  CreditCard,
+  Calendar,
   CheckCircle2,
   XCircle,
   LogOut,
-  ExternalLink
-} from 'lucide-react'
+  ExternalLink,
+} from "lucide-react";
 
 interface SubscriptionData {
-  customerId: string
-  tradingViewUsername: string | null
-  hasActiveSubscription: boolean
+  customerId: string;
+  tradingViewUsername: string | null;
+  hasActiveSubscription: boolean;
   subscription: {
-    id: string
-    status: string
-    planName: string
-    priceAmount: number
-    currency: string
-    interval: string
-    currentPeriodEnd: string
-    cancelAtPeriodEnd: boolean
+    id: string;
+    status: string;
+    planName: string;
+    planType: string;
+    priceAmount: number;
+    currency: string;
+    interval: string;
+    currentPeriodEnd: string;
+    cancelAtPeriodEnd: boolean;
+    totalAccessMonths: number;
+    bonusMonths: number;
     paymentMethod: {
-      brand: string
-      last4: string
-      expMonth: number
-      expYear: number
-    } | null
-  } | null
+      brand: string;
+      last4: string;
+      expMonth: number;
+      expYear: number;
+    } | null;
+  } | null;
+  currentPlan: {
+    id: string;
+    name: string;
+    planType: string;
+  } | null;
+  availablePlans: {
+    id: string;
+    name: string;
+    planType: string;
+    price: number;
+    currency: string;
+    interval: string;
+  }[];
+  provisioningStatus: string;
 }
 
 export default function DashboardPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
-  const [data, setData] = useState<SubscriptionData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isCanceling, setIsCanceling] = useState(false)
-  const [isRedirecting, setIsRedirecting] = useState(false)
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<SubscriptionData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/signin')
-      return
+    if (status === "unauthenticated") {
+      router.push("/signin");
+      return;
     }
 
-    if (status === 'authenticated') {
-      fetchSubscriptionData()
+    if (status === "authenticated") {
+      fetchSubscriptionData();
     }
-  }, [status, router])
+  }, [status, router]);
 
   const fetchSubscriptionData = async () => {
     try {
-      const res = await fetch('/api/subscription/status')
-      const json = await res.json()
+      const res = await fetch("/api/subscription/status");
+      const json = await res.json();
 
       if (!res.ok) {
-        setError(json.error || 'Failed to fetch subscription data')
-        return
+        setError(json.error || "Failed to fetch subscription data");
+        return;
       }
 
       if (!json.tradingViewUsername) {
-        router.push('/onboarding')
-        return
+        router.push("/onboarding");
+        return;
       }
 
       if (!json.hasActiveSubscription) {
-        router.push('/checkout')
-        return
+        router.push("/checkout");
+        return;
       }
 
-      setData(json)
+      setData(json);
     } catch (err) {
-      setError('Failed to load subscription data')
+      setError("Failed to load subscription data");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleCancel = async () => {
-    setIsCanceling(true)
-    setError(null)
+    setIsCanceling(true);
+    setError(null);
 
     try {
-      const res = await fetch('/api/subscription/cancel', {
-        method: 'POST',
-      })
+      const res = await fetch("/api/subscription/cancel", {
+        method: "POST",
+      });
 
-      const json = await res.json()
+      const json = await res.json();
 
       if (!res.ok) {
-        setError(json.error || 'Failed to cancel subscription')
-        return
+        setError(json.error || "Failed to cancel subscription");
+        return;
       }
 
-      await fetchSubscriptionData()
-      setShowCancelConfirm(false)
+      await fetchSubscriptionData();
+      setShowCancelConfirm(false);
     } catch (err) {
-      setError('Failed to cancel subscription')
+      setError("Failed to cancel subscription");
     } finally {
-      setIsCanceling(false)
+      setIsCanceling(false);
     }
-  }
+  };
 
   const handleManageBilling = async () => {
-    setIsRedirecting(true)
-    setError(null)
+    setIsRedirecting(true);
+    setError(null);
 
     try {
-      const res = await fetch('/api/billing-portal', {
-        method: 'POST',
-      })
+      const res = await fetch("/api/billing-portal", {
+        method: "POST",
+      });
 
-      const json = await res.json()
+      const json = await res.json();
 
       if (!res.ok) {
-        setError(json.error || 'Failed to open billing portal')
-        setIsRedirecting(false)
-        return
+        setError(json.error || "Failed to open billing portal");
+        setIsRedirecting(false);
+        return;
       }
 
       if (json.url) {
-        window.location.href = json.url
+        window.location.href = json.url;
       }
     } catch (err) {
-      setError('Failed to open billing portal')
-      setIsRedirecting(false)
+      setError("Failed to open billing portal");
+      setIsRedirecting(false);
     }
-  }
+  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-  }
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
 
   const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
       currency: currency.toUpperCase(),
-    }).format(amount)
-  }
+    }).format(amount);
+  };
 
-  if (status === 'loading' || isLoading) {
+  if (status === "loading" || isLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </main>
-    )
+    );
   }
 
   return (
@@ -177,13 +200,15 @@ export default function DashboardPage() {
               )}
               <div>
                 <p className="font-medium">{session.user.name}</p>
-                <p className="text-sm text-muted-foreground">{session.user.email}</p>
+                <p className="text-sm text-muted-foreground">
+                  {session.user.email}
+                </p>
               </div>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => signOut({ callbackUrl: '/signin' })}
+              onClick={() => signOut({ callbackUrl: "/signin" })}
             >
               <LogOut className="h-4 w-4 mr-2" />
               Sign out
@@ -205,7 +230,9 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Subscription</CardTitle>
-                    <CardDescription>Manage your SN Vision subscription</CardDescription>
+                    <CardDescription>
+                      Manage your SN Vision subscription
+                    </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
                     {data.subscription.cancelAtPeriodEnd ? (
@@ -231,16 +258,23 @@ export default function DashboardPage() {
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Price</p>
                     <p className="font-medium">
-                      {formatCurrency(data.subscription.priceAmount, data.subscription.currency)}
+                      {formatCurrency(
+                        data.subscription.priceAmount,
+                        data.subscription.currency,
+                      )}
                       /{data.subscription.interval}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {data.subscription.cancelAtPeriodEnd ? 'Access until' : 'Next billing date'}
+                      {data.subscription.cancelAtPeriodEnd
+                        ? "Access until"
+                        : "Next billing date"}
                     </p>
-                    <p className="font-medium">{formatDate(data.subscription.currentPeriodEnd)}</p>
+                    <p className="font-medium">
+                      {formatDate(data.subscription.currentPeriodEnd)}
+                    </p>
                   </div>
                   {data.subscription.paymentMethod && (
                     <div className="space-y-1">
@@ -249,23 +283,42 @@ export default function DashboardPage() {
                         Payment method
                       </p>
                       <p className="font-medium capitalize">
-                        {data.subscription.paymentMethod.brand} •••• {data.subscription.paymentMethod.last4}
+                        {data.subscription.paymentMethod.brand} ••••{" "}
+                        {data.subscription.paymentMethod.last4}
                       </p>
                     </div>
                   )}
                 </div>
 
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">TradingView Username</p>
-                  <p className="font-medium">{data.tradingViewUsername}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground">
+                      TradingView Username
+                    </p>
+                    <p className="font-medium">{data.tradingViewUsername}</p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground">
+                      Access Duration
+                    </p>
+                    <p className="font-medium">
+                      {data.subscription.totalAccessMonths} months
+                      {data.subscription.bonusMonths > 0 && (
+                        <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">
+                          +{data.subscription.bonusMonths} bonus
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
 
                 {data.subscription.cancelAtPeriodEnd && (
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Your subscription will end on {formatDate(data.subscription.currentPeriodEnd)}. 
-                      You will lose access to the indicator after this date.
+                      Your subscription will end on{" "}
+                      {formatDate(data.subscription.currentPeriodEnd)}. You will
+                      lose access to the indicator after this date.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -301,15 +354,18 @@ export default function DashboardPage() {
             {showCancelConfirm && (
               <Card className="border-destructive">
                 <CardHeader>
-                  <CardTitle className="text-destructive">Confirm Cancellation</CardTitle>
+                  <CardTitle className="text-destructive">
+                    Confirm Cancellation
+                  </CardTitle>
                   <CardDescription>
                     Are you sure you want to cancel your subscription?
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Your subscription will remain active until {formatDate(data.subscription.currentPeriodEnd)}.
-                    After that, you will lose access to the SN Vision indicator.
+                    Your subscription will remain active until{" "}
+                    {formatDate(data.subscription.currentPeriodEnd)}. After
+                    that, you will lose access to the SN Vision indicator.
                   </p>
                   <div className="flex gap-3">
                     <Button
@@ -332,7 +388,7 @@ export default function DashboardPage() {
                           Canceling...
                         </>
                       ) : (
-                        'Yes, Cancel'
+                        "Yes, Cancel"
                       )}
                     </Button>
                   </div>
@@ -343,5 +399,5 @@ export default function DashboardPage() {
         )}
       </div>
     </main>
-  )
+  );
 }

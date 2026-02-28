@@ -1,50 +1,86 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { getOrCreateCustomer, createCheckoutSession } from '@/lib/stripe'
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import {
+  getOrCreateCustomer,
+  createCheckoutSession,
+  stripe,
+} from "@/lib/stripe";
+import { getPlanByIdAsync, createCustomerMetadata } from "@/lib/plans";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const priceId = process.env.STRIPE_PRICE_ID
+    const body = await request.json();
+    const { planId } = body;
 
-    if (!priceId) {
+    if (!planId) {
       return NextResponse.json(
-        { error: 'Stripe price not configured' },
-        { status: 500 }
-      )
+        { error: "Plan ID is required" },
+        { status: 400 },
+      );
     }
 
-    const googleId = (session.user as any).googleId || ''
-    const customer = await getOrCreateCustomer(session.user.email, googleId)
+    const plan = await getPlanByIdAsync(planId);
 
-    if (!customer.metadata?.tradingViewUsername) {
+    if (!plan) {
       return NextResponse.json(
-        { error: 'Please set your TradingView username first' },
-        { status: 400 }
-      )
+        { error: "Invalid plan selected" },
+        { status: 400 },
+      );
     }
 
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    const googleId = (session.user as any).googleId || "";
+    const customer = await getOrCreateCustomer(session.user.email, googleId);
+
+    if (
+      !customer.metadata?.tradingview_username &&
+      !customer.metadata?.tradingViewUsername
+    ) {
+      return NextResponse.json(
+        { error: "Please set your TradingView username first" },
+        { status: 400 },
+      );
+    }
+
+    const tradingViewUsername =
+      customer.metadata?.tradingview_username ||
+      customer.metadata?.tradingViewUsername ||
+      "";
+
+    // Update customer metadata with plan info
+    const metadata = createCustomerMetadata(
+      plan,
+      tradingViewUsername,
+      session.user.email,
+      googleId,
+      "incomplete",
+    );
+
+    await stripe.customers.update(customer.id, {
+      metadata: metadata,
+    });
+
+    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
     const checkoutSession = await createCheckoutSession(
       customer.id,
-      priceId,
+      plan.priceId,
       `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      `${baseUrl}/checkout`
-    )
+      `${baseUrl}/checkout`,
+    );
 
-    return NextResponse.json({ url: checkoutSession.url })
+    return NextResponse.json({ url: checkoutSession.url });
   } catch (error) {
-    console.error('Checkout session error:', error)
+    console.error("Checkout session error:", error);
     return NextResponse.json(
-      { error: 'Failed to create checkout session' },
-      { status: 500 }
-    )
+      { error: "Failed to create checkout session" },
+      { status: 500 },
+    );
   }
 }

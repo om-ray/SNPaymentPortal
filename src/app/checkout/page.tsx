@@ -15,6 +15,21 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle, Check, LogOut } from "lucide-react";
 
+interface Plan {
+  id: string;
+  name: string;
+  priceId: string;
+  planType: string;
+  accessDurationMonths: number;
+  bonusMonths: number;
+  totalAccessMonths: number;
+  price: number;
+  currency: string;
+  interval: string;
+  description: string;
+  features: string[];
+}
+
 export default function CheckoutPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -24,11 +39,8 @@ export default function CheckoutPage() {
   const [tradingViewUsername, setTradingViewUsername] = useState<string | null>(
     null,
   );
-  const [price, setPrice] = useState<{
-    amount: number;
-    currency: string;
-    interval: string;
-  } | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -38,19 +50,23 @@ export default function CheckoutPage() {
 
     if (status === "authenticated") {
       checkSubscriptionStatus();
-      fetchPrice();
+      fetchPlans();
     }
   }, [status, router]);
 
-  const fetchPrice = async () => {
+  const fetchPlans = async () => {
     try {
-      const res = await fetch("/api/subscription/price");
+      const res = await fetch("/api/subscription/plans");
       const data = await res.json();
       if (res.ok) {
-        setPrice(data);
+        setPlans(data.plans);
+        // Select the first plan by default
+        if (data.plans.length > 0) {
+          setSelectedPlan(data.plans[0].id);
+        }
       }
     } catch (error) {
-      console.error("Error fetching price:", error);
+      console.error("Error fetching plans:", error);
     }
   };
 
@@ -78,12 +94,19 @@ export default function CheckoutPage() {
   };
 
   const handleCheckout = async () => {
+    if (!selectedPlan) {
+      setError("Please select a plan");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
       const res = await fetch("/api/checkout/create-session", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: selectedPlan }),
       });
 
       const data = await res.json();
@@ -101,6 +124,13 @@ export default function CheckoutPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const formatCurrency = (amount: number, currency: string) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount);
   };
 
   if (status === "loading" || isChecking) {
@@ -142,9 +172,7 @@ export default function CheckoutPage() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">SN Vision</CardTitle>
-            <CardDescription>
-              TradingView Indicator Subscription
-            </CardDescription>
+            <CardDescription>Choose your subscription plan</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {error && (
@@ -154,45 +182,60 @@ export default function CheckoutPage() {
               </Alert>
             )}
 
-            <div className="text-center">
-              <div className="text-4xl font-bold">
-                {price ? (
-                  <>
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: price.currency,
-                    }).format(price.amount)}
-                    <span className="text-lg font-normal text-muted-foreground">
-                      /{price.interval}
-                    </span>
-                  </>
-                ) : (
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-                )}
+            {plans.length === 0 ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-              {price && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  Billed {price.interval}ly
-                </p>
-              )}
-            </div>
-
-            <ul className="space-y-3">
-              <li className="flex items-center gap-2">
-                <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                <span className="text-sm">
-                  Full access to SN Vision indicator
-                </span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                <span className="text-sm">All future updates included</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                <span className="text-sm">Cancel anytime</span>
-              </li>
-            </ul>
+            ) : (
+              <div className="space-y-3">
+                {plans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    onClick={() => setSelectedPlan(plan.id)}
+                    className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      selectedPlan === plan.id
+                        ? "border-primary bg-primary/5"
+                        : "border-muted hover:border-muted-foreground/50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <h3 className="font-semibold">{plan.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {plan.description}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold">
+                          {formatCurrency(plan.price, plan.currency)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {plan.interval}
+                        </p>
+                      </div>
+                    </div>
+                    {plan.features && plan.features.length > 0 && (
+                      <ul className="mt-3 space-y-1">
+                        {plan.features.map((feature, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {plan.bonusMonths > 0 && (
+                      <div className="mt-2 inline-block px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                        +{plan.bonusMonths} bonus months included
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {tradingViewUsername && (
               <div className="p-3 bg-muted rounded-lg">
@@ -206,7 +249,7 @@ export default function CheckoutPage() {
           <CardFooter>
             <Button
               onClick={handleCheckout}
-              disabled={isLoading}
+              disabled={isLoading || !selectedPlan}
               className="w-full h-12 text-base"
             >
               {isLoading ? (

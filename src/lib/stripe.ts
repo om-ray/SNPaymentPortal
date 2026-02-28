@@ -73,6 +73,8 @@ export async function updateCustomerTradingViewUsername(
 ): Promise<Stripe.Customer> {
   return await stripe.customers.update(customerId, {
     metadata: {
+      tradingview_username: tradingViewUsername,
+      // Keep old format for backwards compatibility
       tradingViewUsername,
     },
   });
