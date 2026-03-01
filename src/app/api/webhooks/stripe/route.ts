@@ -3,6 +3,11 @@ import { stripe } from "@/lib/stripe";
 import { grantAccess } from "@/lib/tradingview";
 import { getPlanByPriceIdAsync } from "@/lib/plans";
 import { triggerSessionRefresh } from "@/lib/github";
+import {
+  syncSubscriptionToHubSpot,
+  markTradingViewAccessGranted,
+  expireSubscription,
+} from "@/lib/hubspot";
 import Stripe from "stripe";
 
 // Helper to get TradingView username from customer metadata (supports both old and new format)
@@ -128,6 +133,43 @@ export async function POST(request: NextRequest) {
                 console.log(
                   `Granted TradingView access to ${tradingViewUsername} for ${duration}`,
                 );
+
+                // Sync to HubSpot
+                if (customer.email) {
+                  try {
+                    const plan = priceId
+                      ? await getPlanByPriceIdAsync(priceId)
+                      : null;
+                    const startDate = new Date();
+                    const endDate = new Date();
+                    endDate.setMonth(endDate.getMonth() + totalAccessMonths);
+
+                    await syncSubscriptionToHubSpot(customer.email, {
+                      planType:
+                        plan?.planType === "annual"
+                          ? "annual"
+                          : plan?.planType === "6month"
+                            ? "6_months"
+                            : "promotion",
+                      startDate,
+                      endDate,
+                      purchasePrice:
+                        (subscription.items.data[0]?.price?.unit_amount || 0) /
+                        100,
+                      bonusMonths: plan?.bonusMonths || 0,
+                      tradingviewUsername: tradingViewUsername,
+                    });
+                    await markTradingViewAccessGranted(
+                      customer.email,
+                      tradingViewUsername,
+                    );
+                    console.log(
+                      `Synced subscription to HubSpot for ${customer.email}`,
+                    );
+                  } catch (hubspotError) {
+                    console.error("HubSpot sync error:", hubspotError);
+                  }
+                }
               } catch (error: any) {
                 console.error("Failed to grant TradingView access:", error);
 
@@ -215,6 +257,40 @@ export async function POST(request: NextRequest) {
                 console.log(
                   `Extended TradingView access for ${tradingViewUsername} for ${duration}`,
                 );
+
+                // Sync renewal to HubSpot
+                if (customer.email) {
+                  try {
+                    const plan = priceId
+                      ? await getPlanByPriceIdAsync(priceId)
+                      : null;
+                    const startDate = new Date();
+                    const endDate = new Date();
+                    endDate.setMonth(endDate.getMonth() + totalAccessMonths);
+
+                    await syncSubscriptionToHubSpot(customer.email, {
+                      planType:
+                        plan?.planType === "annual"
+                          ? "annual"
+                          : plan?.planType === "6month"
+                            ? "6_months"
+                            : "promotion",
+                      startDate,
+                      endDate,
+                      purchasePrice: (invoice.amount_paid || 0) / 100,
+                      bonusMonths: plan?.bonusMonths || 0,
+                      tradingviewUsername: tradingViewUsername,
+                    });
+                    console.log(
+                      `Synced renewal to HubSpot for ${customer.email}`,
+                    );
+                  } catch (hubspotError) {
+                    console.error(
+                      "HubSpot sync error on renewal:",
+                      hubspotError,
+                    );
+                  }
+                }
               } catch (error: any) {
                 console.error("Failed to extend TradingView access:", error);
 
@@ -251,6 +327,26 @@ export async function POST(request: NextRequest) {
         console.log(
           `Subscription ${subscription.id} deleted - access will expire naturally`,
         );
+
+        // Update HubSpot status to expired
+        if (subscription.customer) {
+          try {
+            const customer = await stripe.customers.retrieve(
+              subscription.customer as string,
+            );
+            if (customer && !customer.deleted && customer.email) {
+              await expireSubscription(customer.email);
+              console.log(
+                `Marked subscription as expired in HubSpot for ${customer.email}`,
+              );
+            }
+          } catch (hubspotError) {
+            console.error(
+              "HubSpot sync error on subscription delete:",
+              hubspotError,
+            );
+          }
+        }
         break;
       }
 
