@@ -2,8 +2,8 @@ import { stripe } from "./stripe";
 
 // Price IDs - the only thing we need to know which prices to fetch
 const PRICE_IDS = [
-  "price_1T5k6uBczLGFpfEDDgwwszLg", // Annual
-  "price_1T5l6iBczLGFpfEDyOCiEAbV", // 6 Months
+  "price_1TDKB3R7ocKiILqKDOBzoFMR", // Annual
+  "price_1TDKALR7ocKiILqK3arspN59", // 6 Months
 ];
 
 export interface Plan {
